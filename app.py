@@ -854,8 +854,8 @@ def show_summary_page():
             with col1:
                 st.metric(
                     label="Turn-level Query Wins",
-                    value=f"A: {stats['turn_level_wins']['A']} | B: {stats['turn_level_wins']['B']}",
-                    help="Number of seed queries won by each model based on per-turn majority votes"
+                    value=f"A: {stats['turn_level_wins']['A']} | B: {stats['turn_level_wins']['B']} | Tie: {stats['turn_level_wins']['tie']}",
+                    help="Number of seed queries won by each model based on per-turn majority votes. Tie indicates equal number of turn-level votes for both models."
                 )
 
             with col2:
@@ -870,7 +870,7 @@ def show_summary_page():
                 st.metric(
                     label="Preference Consistency",
                     value=f"{consistency_decimal:.2f}",
-                    help="A 0-1 metric indicating how consistently the user preferred the same model"
+                    help="A 0-1 metric indicating how consistently the user preferred the same model (excludes tied queries)"
                 )
 
             st.write("")  # Add spacing
@@ -881,17 +881,17 @@ def show_summary_page():
             with chart_col1:
                 st.write("**Turn-level Winners per Seed Query**")
 
-                # Create bar chart data
+                # Create bar chart data including ties
                 turn_data = pd.DataFrame({
-                    'Model': ['Model A', 'Model B'],
-                    'Number of Queries Won': [stats['turn_level_wins']['A'], stats['turn_level_wins']['B']]
+                    'Model': ['Model A', 'Model B', 'Tie'],
+                    'Number of Queries Won': [stats['turn_level_wins']['A'], stats['turn_level_wins']['B'], stats['turn_level_wins']['tie']]
                 })
 
                 # Display bar chart
                 st.bar_chart(turn_data.set_index('Model'), height=300)
 
                 # Show counts below chart
-                st.caption(f"Model A: {stats['turn_level_wins']['A']} queries | Model B: {stats['turn_level_wins']['B']} queries")
+                st.caption(f"Model A: {stats['turn_level_wins']['A']} queries | Model B: {stats['turn_level_wins']['B']} queries | Tie: {stats['turn_level_wins']['tie']} queries")
 
             with chart_col2:
                 st.write("**Session-level Winners per Seed Query**")

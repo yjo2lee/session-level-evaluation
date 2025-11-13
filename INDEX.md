@@ -9,8 +9,6 @@ A comprehensive index of all files in the AI Assistant Annotation System.
 | Get started immediately | [START_HERE.md](START_HERE.md) |
 | Install and run the app | [QUICKSTART.md](QUICKSTART.md) |
 | Understand the system | [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
-| See detailed features | [README.md](README.md) |
-| Understand user workflows | [WORKFLOW.md](WORKFLOW.md) |
 | Learn about the database | [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) |
 | Customize AI responses | [ai_service.py](ai_service.py) |
 | Modify the UI | [app.py](app.py) |

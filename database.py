@@ -455,7 +455,7 @@ def get_user_query_level_stats(user_id: str) -> Dict:
 
     Returns:
         Dict containing:
-        - turn_level_wins: {'A': count, 'B': count} - queries won by each model at turn level
+        - turn_level_wins: {'A': count, 'B': count, 'tie': count} - queries won by each model at turn level
         - session_level_wins: {'A': count, 'B': count} - queries won by each model at session level
         - consistency_rate: float (0-100) - percentage of queries where both levels agreed
         - query_details: List of dicts with per-query breakdown
@@ -473,7 +473,7 @@ def get_user_query_level_stats(user_id: str) -> Dict:
     )
     queries = cursor.fetchall()
 
-    turn_level_wins = {'A': 0, 'B': 0}
+    turn_level_wins = {'A': 0, 'B': 0, 'tie': 0}
     session_level_wins = {'A': 0, 'B': 0}
     consistent_count = 0
     total_queries = 0
@@ -513,6 +513,7 @@ def get_user_query_level_stats(user_id: str) -> Dict:
         # Determine winners
         turn_winner = None
         session_winner = None
+        is_tie = False
 
         if turn_votes:
             a_votes = turn_votes.get('A', 0)
@@ -523,16 +524,22 @@ def get_user_query_level_stats(user_id: str) -> Dict:
             elif b_votes > a_votes:
                 turn_winner = 'B'
                 turn_level_wins['B'] += 1
-            # If tie, no winner counted
+            elif a_votes == b_votes and a_votes > 0:
+                # Tie case
+                is_tie = True
+                turn_winner = 'tie'
+                turn_level_wins['tie'] += 1
 
             if session_pref_row:
                 session_winner = session_pref_row[0]
                 session_level_wins[session_winner] += 1
 
-            # Check consistency
+            # Check consistency and include in details if we have both annotations
             if turn_winner and session_winner:
                 total_queries += 1
-                is_consistent = (turn_winner == session_winner)
+                # Consistency only applies when there's a clear turn-level winner (not a tie)
+                is_consistent = (turn_winner == session_winner) if not is_tie else None
+
                 if is_consistent:
                     consistent_count += 1
 
@@ -543,13 +550,16 @@ def get_user_query_level_stats(user_id: str) -> Dict:
                     'turn_votes': {'A': a_votes, 'B': b_votes},
                     'session_winner': session_winner,
                     'consistent': is_consistent,
+                    'is_tie': is_tie,
                     'notes_a': notes_dict.get('Assistant A', ''),
                     'notes_b': notes_dict.get('Assistant B', '')
                 })
 
     conn.close()
 
-    consistency_rate = (consistent_count / total_queries * 100) if total_queries > 0 else 0
+    # Consistency rate only considers queries with a clear turn-level winner
+    queries_with_clear_winner = total_queries - turn_level_wins['tie']
+    consistency_rate = (consistent_count / queries_with_clear_winner * 100) if queries_with_clear_winner > 0 else 0
 
     return {
         'turn_level_wins': turn_level_wins,
