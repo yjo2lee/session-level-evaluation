@@ -1,0 +1,6 @@
+annotationenv/
+.venv/
+env/
+__pycache__/
+*.db
+.DS_Store
