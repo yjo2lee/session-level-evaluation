@@ -19,8 +19,8 @@ SYSTEM_PROMPT_B = """You are a helpful and friendly assistant. When responding t
 
 
 # Model configuration
-MODEL_A = "gpt-4o-mini"  # Model name for Assistant A
-MODEL_B = "gpt-4o-mini"  # Model name for Assistant B
+MODEL_A = "gpt-4o"  # Model name for Assistant A
+MODEL_B = "gpt-4o"  # Model name for Assistant B
 
 def generate_response_a(conversation_history: List[Dict[str, str]], user_message: str) -> str:
     """

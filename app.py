@@ -828,7 +828,13 @@ def show_summary_page():
         # Consistency check
         st.subheader("Query-Level Consistency")
         if turn_summary['turns'] and session_summary['preferred_assistant']:
-            turn_preferred = 'A' if turn_summary['model_a_ratio'] > turn_summary['model_b_ratio'] else 'B'
+            # turn_preferred = 'A' if turn_summary['model_a_ratio'] > turn_summary['model_b_ratio'] else 'B'
+            if turn_summary['model_a_ratio'] > turn_summary['model_b_ratio']:
+                turn_preferred = 'A'
+            elif turn_summary['model_b_ratio'] > turn_summary['model_a_ratio']:
+                turn_preferred = 'B'
+            else:
+                turn_preferred = 'Tie'  
             session_preferred = session_summary['preferred_assistant']
 
             if turn_preferred == session_preferred:
@@ -870,7 +876,7 @@ def show_summary_page():
                 st.metric(
                     label="Preference Consistency",
                     value=f"{consistency_decimal:.2f}",
-                    help="A 0-1 metric indicating how consistently the user preferred the same model (excludes tied queries)"
+                    help="A 0-1 metric indicating how consistently the user preferred the same model across turn-level and session-level annotations (includes all queries with both annotations)"
                 )
 
             st.write("")  # Add spacing

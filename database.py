@@ -481,11 +481,14 @@ def get_user_query_level_stats(user_id: str) -> Dict:
 
     for query_id, query_text in queries:
         # Get turn-level winner (majority vote across all turns for this query)
+        # Only consider completed turn-level sessions
         cursor.execute(
             """SELECT selected_assistant, COUNT(*) as count
                FROM turn_level_turns tlt
                JOIN turn_level_sessions tls ON tlt.session_id = tls.session_id
-               WHERE tls.user_id = ? AND tls.query_id = ? AND tlt.selected_assistant IS NOT NULL
+               WHERE tls.user_id = ? AND tls.query_id = ?
+                 AND tls.is_completed = 1
+                 AND tlt.selected_assistant IS NOT NULL
                GROUP BY selected_assistant""",
             (user_id, query_id)
         )
@@ -537,8 +540,8 @@ def get_user_query_level_stats(user_id: str) -> Dict:
             # Check consistency and include in details if we have both annotations
             if turn_winner and session_winner:
                 total_queries += 1
-                # Consistency only applies when there's a clear turn-level winner (not a tie)
-                is_consistent = (turn_winner == session_winner) if not is_tie else None
+                # Check if turn-level winner matches session-level winner
+                is_consistent = (turn_winner == session_winner)
 
                 if is_consistent:
                     consistent_count += 1
@@ -557,9 +560,8 @@ def get_user_query_level_stats(user_id: str) -> Dict:
 
     conn.close()
 
-    # Consistency rate only considers queries with a clear turn-level winner
-    queries_with_clear_winner = total_queries - turn_level_wins['tie']
-    consistency_rate = (consistent_count / queries_with_clear_winner * 100) if queries_with_clear_winner > 0 else 0
+    # Consistency rate considers all queries with both annotations
+    consistency_rate = (consistent_count / total_queries * 100) if total_queries > 0 else 0
 
     return {
         'turn_level_wins': turn_level_wins,
