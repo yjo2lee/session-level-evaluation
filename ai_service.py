@@ -7,13 +7,19 @@ import os
 from typing import List, Dict
 from openai import OpenAI
 import streamlit as st
-# from dotenv import load_dotenv
 
 # Initialize OpenAI client
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
+if not OPENAI_API_KEY:
+    st.error(
+        "OpenAI API key is not set. "
+        "Set OPENAI_API_KEY in Streamlit Secrets (on Cloud) or as an environment variable locally."
+    )
+    st.stop()
 
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
-client = OpenAI(OPENAI_API_KEY)
+# Correct client initialization
+client = OpenAI(api_key=OPENAI_API_KEY)
 # client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # System prompts for each assistant
