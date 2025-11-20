@@ -7,7 +7,7 @@ import os
 from typing import List, Dict
 from openai import OpenAI
 import streamlit as st
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
 # Initialize OpenAI client
 
