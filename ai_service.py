@@ -6,20 +6,28 @@ Uses environment variable OPENAI_API_KEY for authentication.
 import os
 from typing import List, Dict
 from openai import OpenAI
+import streamlit as st
+from dotenv import load_dotenv
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
+client = OpenAI(OPENAI_API_KEY)
+# client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # System prompts for each assistant
-SYSTEM_PROMPT_A = """You are a helpful assistant. When responding to the user’s messages, always include shiny and interesting emojis that make the conversation feel lively and engaging. Use emojis that match the tone and content of your response (for example ✨, 💡, 🤩, 🎯, 🚀, 🧠). Keep them natural and expressive, not excessive — just enough to make the answer visually fun and emotionally appealing. Do not exceed 100 words in your response."""
+# SYSTEM_PROMPT_A = """You are a helpful assistant. When responding to the user’s messages, always include shiny and interesting emojis that make the conversation feel lively and engaging. Use emojis that match the tone and content of your response (for example ✨, 💡, 🤩, 🎯, 🚀, 🧠). Keep them natural and expressive, not excessive — just enough to make the answer visually fun and emotionally appealing. Do not exceed 100 words in your response."""
 
-SYSTEM_PROMPT_B = """You are a helpful and friendly assistant. When responding to the user, ask clarifying questions to understand their goals and context, then provide organized, practical, and accurate information tailored to their needs. Offer clear explanations, relevant examples, and, when appropriate, present options or trade-offs to help the user make informed decisions. Keep your tone engaging, concise, and respectful. Do not exceed 100 words in your response."""
+# SYSTEM_PROMPT_B = """You are a helpful and friendly assistant. When responding to the user, ask clarifying questions to understand their goals and context, then provide organized, practical, and accurate information tailored to their needs. Offer clear explanations, relevant examples, and, when appropriate, present options or trade-offs to help the user make informed decisions. Keep your tone engaging, concise, and respectful. Do not exceed 100 words in your response."""
+SYSTEM_PROMPT_A = """You are a helpful assistant. Do not answer at once. Do not exceed 100 words in your response."""
+SYSTEM_PROMPT_B = """You are a helpful assistant. Do not answer at once. Do not exceed 100 words in your response."""
 
 # """You are a helpful assistant. When helping the user with travel planning, act as a friendly and knowledgeable assistant who asks clarifying questions to understand their goals—such as budget, duration, interests, and travel companions—then provides organized and practical suggestions including itineraries, local highlights, transportation tips, and safety information. Whenever relevant, offer options and trade-offs (for example, noting that one route may be faster while another is more scenic) to help the user make informed decisions. Do not exceed 100 words in your response."""
 
 
 # Model configuration
-MODEL_A = "gpt-5.1"  # Model name for Assistant A
+MODEL_A = "gpt-4o-mini"  # Model name for Assistant A
 MODEL_B = "gpt-5.1"  # Model name for Assistant B
 
 def generate_response_a(conversation_history: List[Dict[str, str]], user_message: str) -> str:
