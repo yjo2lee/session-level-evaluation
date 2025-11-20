@@ -13,6 +13,7 @@ from database import (
 from ai_service import get_assistant_response
 import time
 import pandas as pd
+import random
 
 # Page configuration
 st.set_page_config(page_title="Chat Interface", layout="wide", initial_sidebar_state="collapsed")
@@ -63,6 +64,8 @@ if 'show_notes_input' not in st.session_state:
     st.session_state.show_notes_input = False
 if 'session_phase' not in st.session_state:
     st.session_state.session_phase = 'conversation_a'  # conversation_a, notes_a, conversation_b, notes_b, final_preference
+if 'session_order' not in st.session_state:
+    st.session_state.session_order = None  # Will be set when session-level starts: 'A_first' or 'B_first'
 
 # Confirmation state
 if 'show_confirmation' not in st.session_state:
@@ -263,7 +266,10 @@ def show_turn_level_page():
             response_b
         )
 
-        # Add to display
+        # Add to display with randomized order
+        # Randomly decide which response goes to which position
+        show_a_first = random.choice([True, False])
+
         st.session_state.turn_messages.append({
             'role': 'user',
             'content': user_input,
@@ -275,7 +281,8 @@ def show_turn_level_page():
             'response_b': response_b,
             'turn_id': turn_id,
             'user_message': user_input,
-            'selected_assistant': None
+            'selected_assistant': None,
+            'show_a_first': show_a_first  # Track display order
         })
 
         st.session_state.waiting_for_selection = True
@@ -296,42 +303,57 @@ def show_turn_level_page():
         elif msg['role'] == 'assistant':
             col1, col2 = st.columns(2)
 
+            # Get randomization order (default to True for backwards compatibility)
+            show_a_first = msg.get('show_a_first', True)
+
+            # Determine which response goes in which position
+            if show_a_first:
+                left_response = msg['response_a']
+                left_assistant = 'A'
+                right_response = msg['response_b']
+                right_assistant = 'B'
+            else:
+                left_response = msg['response_b']
+                left_assistant = 'B'
+                right_response = msg['response_a']
+                right_assistant = 'A'
+
             # Determine selection state
             selected = msg.get('selected_assistant')
-            is_a_selected = selected == 'A'
-            is_b_selected = selected == 'B'
+            is_left_selected = selected == left_assistant
+            is_right_selected = selected == right_assistant
 
             with col1:
                 container_class = "response-container"
                 if selected:
-                    container_class += " response-selected" if is_a_selected else " response-unselected"
+                    container_class += " response-selected" if is_left_selected else " response-unselected"
 
                 st.markdown(f"""<div class="{container_class}">
-                    <div class="assistant-label">Assistant A</div>
-                    {msg['response_a']}
+                    <div class="assistant-label">Response 1</div>
+                    {left_response}
                 </div>""", unsafe_allow_html=True)
 
-                if not selected and st.button("Select", key=f"select_a_{msg['turn_id']}"):
-                    update_turn_selection(msg['turn_id'], 'A')
+                if not selected and st.button("Select", key=f"select_left_{msg['turn_id']}"):
+                    update_turn_selection(msg['turn_id'], left_assistant)
                     # Update the message in session state
-                    msg['selected_assistant'] = 'A'
+                    msg['selected_assistant'] = left_assistant
                     st.session_state.waiting_for_selection = False
                     st.rerun()
 
             with col2:
                 container_class = "response-container"
                 if selected:
-                    container_class += " response-selected" if is_b_selected else " response-unselected"
+                    container_class += " response-selected" if is_right_selected else " response-unselected"
 
                 st.markdown(f"""<div class="{container_class}">
-                    <div class="assistant-label">Assistant B</div>
-                    {msg['response_b']}
+                    <div class="assistant-label">Response 2</div>
+                    {right_response}
                 </div>""", unsafe_allow_html=True)
 
-                if not selected and st.button("Select", key=f"select_b_{msg['turn_id']}"):
-                    update_turn_selection(msg['turn_id'], 'B')
+                if not selected and st.button("Select", key=f"select_right_{msg['turn_id']}"):
+                    update_turn_selection(msg['turn_id'], right_assistant)
                     # Update the message in session state
-                    msg['selected_assistant'] = 'B'
+                    msg['selected_assistant'] = right_assistant
                     st.session_state.waiting_for_selection = False
                     st.rerun()
 
@@ -399,7 +421,10 @@ def show_turn_level_page():
                 response_b
             )
 
-            # Add to display
+            # Add to display with randomized order
+            # Randomly decide which response goes to which position
+            show_a_first = random.choice([True, False])
+
             st.session_state.turn_messages.append({
                 'role': 'user',
                 'content': user_input,
@@ -411,7 +436,8 @@ def show_turn_level_page():
                 'response_b': response_b,
                 'turn_id': turn_id,
                 'user_message': user_input,
-                'selected_assistant': None
+                'selected_assistant': None,
+                'show_a_first': show_a_first  # Track display order
             })
 
             st.session_state.waiting_for_selection = True
@@ -422,6 +448,15 @@ def show_turn_level_page():
 # ============= Session-Level Annotation Page =============
 
 def show_session_level_page():
+    # Initialize randomized session order if not already set
+    if st.session_state.session_order is None:
+        st.session_state.session_order = random.choice(['A_first', 'B_first'])
+        # Set initial assistant based on randomized order
+        if st.session_state.session_order == 'A_first':
+            st.session_state.current_assistant = 'A'
+        else:
+            st.session_state.current_assistant = 'B'
+
     # Show confirmation screen if needed
     if st.session_state.show_confirmation and st.session_state.confirmation_mode == 'session_level':
         st.title("Session-Level Annotation Completed!")
@@ -470,7 +505,9 @@ def show_session_level_page():
         show_final_preference()
 
 def show_session_conversation(assistant_name):
-    st.title(f"Conversation with Assistant {assistant_name}")
+    # Determine session number based on phase
+    session_number = 1 if st.session_state.session_phase in ['conversation_a', 'notes_a'] else 2
+    st.title(f"Conversation - Session {session_number}")
 
     turn_count = len([msg for msg in st.session_state.session_messages if msg['role'] == 'user'])
     is_last_session = (st.session_state.session_phase == 'conversation_b')
@@ -478,20 +515,20 @@ def show_session_conversation(assistant_name):
     # Auto-start with seed query if:
     # 1. No messages yet in this conversation (turn_count == 0)
     # 2. Seed query exists (initial_query is set)
-    # 3. Either coming from turn-level OR switching from Assistant A to Assistant B
+    # 3. Either coming from turn-level OR switching to Session 2
     should_auto_start = (
         turn_count == 0 and
         st.session_state.initial_query and
-        (st.session_state.turn_level_completed or assistant_name == 'B')
+        (st.session_state.turn_level_completed or session_number == 2)
     )
 
     if should_auto_start:
         # Automatically process the seed query
         user_input = st.session_state.initial_query
-        if assistant_name == 'B':
-            st.info(f"Starting conversation with Assistant B using same seed query: \"{user_input}\"")
+        if session_number == 2:
+            st.info(f"Starting Session {session_number} with the same seed query: \"{user_input}\"")
         else:
-            st.info(f"Starting conversation with seed query: \"{user_input}\"")
+            st.info(f"Starting Session {session_number} with seed query: \"{user_input}\"")
 
         # Create query if needed
         if st.session_state.query_id is None:
@@ -543,7 +580,7 @@ def show_session_conversation(assistant_name):
                 <strong>You:</strong> {msg['content']}
             </div>""", unsafe_allow_html=True)
         else:
-            st.markdown(f"**Assistant {assistant_name}:** {msg['content']}")
+            st.markdown(f"**Assistant:** {msg['content']}")
 
     # Chat input with Complete button right next to it
     if turn_count > 0:
@@ -616,8 +653,9 @@ def end_session_conversation():
 def show_notes_input():
     """Show the notes input page after a conversation."""
     assistant_name = 'A' if st.session_state.session_phase == 'notes_a' else 'B'
+    session_number = 1 if st.session_state.session_phase == 'notes_a' else 2
 
-    st.title(f"Conversation Summary - Assistant {assistant_name}")
+    st.title(f"Conversation Summary - Session {session_number}")
 
     st.write("Here's the conversation you just had:")
 
@@ -628,12 +666,12 @@ def show_notes_input():
                 <strong>You:</strong> {msg['content']}
             </div>""", unsafe_allow_html=True)
         else:
-            st.markdown(f"**Assistant {assistant_name}:** {msg['content']}")
+            st.markdown(f"**Assistant:** {msg['content']}")
 
     st.write("---")
     st.write("Please share any thoughts or notes about this conversation:")
 
-    notes = st.text_area("Your notes:", height=150, key=f"notes_{assistant_name}")
+    notes = st.text_area("Your notes:", height=150, key=f"notes_{session_number}")
 
     if st.button("Complete", type="primary"):
         # Save notes
@@ -644,12 +682,16 @@ def show_notes_input():
         # Determine next phase
         if st.session_state.session_phase == 'notes_a':
             # Show transition message and move to conversation B
-            st.success("Great! Now we will start the conversation with the other assistant.")
+            st.success("Great! Now we will start Session 2.")
             time.sleep(1)
 
             # Reset for next conversation
             st.session_state.session_phase = 'conversation_b'
-            st.session_state.current_assistant = 'B'
+            # Set second assistant based on randomized order
+            if st.session_state.session_order == 'A_first':
+                st.session_state.current_assistant = 'B'
+            else:
+                st.session_state.current_assistant = 'A'
             st.session_state.session_messages = []
             st.session_state.session_history = []
             st.session_state.session_conversation_id = None
@@ -657,7 +699,7 @@ def show_notes_input():
 
             # Auto-start with initial query if available
             if st.session_state.initial_query:
-                st.info(f"Starting conversation with: {st.session_state.initial_query}")
+                st.info(f"Starting Session 2 with: {st.session_state.initial_query}")
 
             st.rerun()
 
@@ -671,19 +713,29 @@ def show_final_preference():
     """Show the final preference selection page."""
     st.title("Final Preference")
 
-    st.write("You have now completed conversations with both assistants.")
+    st.write("You have now completed both conversation sessions.")
     st.write("Which overall conversation did you prefer?")
 
     col1, col2 = st.columns(2)
 
+    # Determine which session corresponds to which assistant
+    # Session 1 is always the first phase (conversation_a)
+    # Session 2 is always the second phase (conversation_b)
+    if st.session_state.session_order == 'A_first':
+        session_1_assistant = 'A'
+        session_2_assistant = 'B'
+    else:
+        session_1_assistant = 'B'
+        session_2_assistant = 'A'
+
     with col1:
-        if st.button("Assistant A", use_container_width=True, type="primary"):
+        if st.button("Session 1", use_container_width=True, type="primary"):
             save_session_level_preference(
                 st.session_state.user_id,
                 st.session_state.query_id,
                 st.session_state.conversation_a_id,
                 st.session_state.conversation_b_id,
-                'A'
+                session_1_assistant  # Map Session 1 to actual assistant
             )
             # Mark session-level as completed and show confirmation
             st.session_state.show_confirmation = True
@@ -691,13 +743,13 @@ def show_final_preference():
             st.rerun()
 
     with col2:
-        if st.button("Assistant B", use_container_width=True, type="primary"):
+        if st.button("Session 2", use_container_width=True, type="primary"):
             save_session_level_preference(
                 st.session_state.user_id,
                 st.session_state.query_id,
                 st.session_state.conversation_a_id,
                 st.session_state.conversation_b_id,
-                'B'
+                session_2_assistant  # Map Session 2 to actual assistant
             )
             # Mark session-level as completed and show confirmation
             st.session_state.show_confirmation = True
@@ -725,6 +777,7 @@ def reset_session_level_state():
     st.session_state.conversation_b_id = None
     st.session_state.show_notes_input = False
     st.session_state.session_phase = 'conversation_a'
+    st.session_state.session_order = None  # Reset randomized order
 
 # ============= Summary Page =============
 
