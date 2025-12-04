@@ -4,36 +4,71 @@ Uses ANTHROPIC_API_KEY from Streamlit Secrets (Cloud) or environment variable (l
 """
 
 import os
+from pathlib import Path
 from typing import List, Dict
 import anthropic
 import streamlit as st
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (for local development)
-load_dotenv()
+# Try multiple possible locations for .env file
+env_paths = [
+    Path(__file__).parent / '.env',  # Same directory as this file
+    Path.cwd() / '.env',  # Current working directory
+]
 
-# Get API key from Streamlit Secrets (Cloud) or environment variable (local)
-def get_anthropic_api_key():
-    """Get Anthropic API key from Streamlit Secrets or environment variable."""
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        break
+else:
+    load_dotenv()  # Try default behavior
+
+def get_anthropic_client():
+    """Get Anthropic client with API key from Streamlit Secrets or environment variable."""
+    api_key = None
+    
     # Try Streamlit Secrets first (for Cloud deployment)
     try:
         if hasattr(st, 'secrets') and 'ANTHROPIC_API_KEY' in st.secrets:
-            return st.secrets['ANTHROPIC_API_KEY']
+            api_key = st.secrets['ANTHROPIC_API_KEY']
     except Exception:
         pass
     
     # Fall back to environment variable (for local development)
-    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+    
+    # Also try without quotes (in case .env has extra formatting)
+    if not api_key:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+    
+    if not api_key:
+        # Debug info
+        env_file = Path(__file__).parent / '.env'
+        debug_info = f"Looking for .env at: {env_file}\n.env exists: {env_file.exists()}"
+        
         st.error(
-            "Anthropic API key is not set. "
-            "Set ANTHROPIC_API_KEY in Streamlit Secrets (on Cloud) or as an environment variable locally."
+            "⚠️ Anthropic API key is not set!\n\n"
+            "**For local development:** Create a `.env` file with:\n"
+            "```\nANTHROPIC_API_KEY=your-api-key-here\n```\n\n"
+            "**For Streamlit Cloud:** Add `ANTHROPIC_API_KEY` in Settings → Secrets.\n\n"
+            f"Debug: {debug_info}"
         )
         st.stop()
-    return api_key
+    
+    return anthropic.Anthropic(api_key=api_key)
 
-# Initialize Anthropic client
-client = anthropic.Anthropic(api_key=get_anthropic_api_key())
+# Initialize Anthropic client (lazy loading to show proper error message)
+client = None
+
+def get_client():
+    """Get or initialize the Anthropic client."""
+    global client
+    if client is None:
+        client = get_anthropic_client()
+    return client
+
 
 # System prompts for each assistant
 
@@ -109,8 +144,8 @@ Your itinerary should include:
 
 
 # Model configuration - Using Claude Sonnet 4
-MODEL_A = "claude-sonnet-4-20250929"  # Model name for Assistant A
-MODEL_B = "claude-sonnet-4-20250929"  # Model name for Assistant B
+MODEL_A = "claude-sonnet-4-20250514"  # Model name for Assistant A (Claude Sonnet 4)
+MODEL_B = "claude-sonnet-4-20250514"  # Model name for Assistant B (Claude Sonnet 4)
 
 def generate_response_a(conversation_history: List[Dict[str, str]], user_message: str) -> str:
     """
@@ -137,7 +172,7 @@ def generate_response_a(conversation_history: List[Dict[str, str]], user_message
     messages.append({"role": "user", "content": user_message})
 
     # Call Anthropic API
-    response = client.messages.create(
+    response = get_client().messages.create(
         model=MODEL_A,
         max_tokens=1024,
         system=SYSTEM_PROMPT_A,
@@ -171,7 +206,7 @@ def generate_response_b(conversation_history: List[Dict[str, str]], user_message
     messages.append({"role": "user", "content": user_message})
 
     # Call Anthropic API
-    response = client.messages.create(
+    response = get_client().messages.create(
         model=MODEL_B,
         max_tokens=1024,
         system=SYSTEM_PROMPT_B,
