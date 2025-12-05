@@ -102,6 +102,32 @@ def init_database():
         )
     """)
 
+    # Table for pilot study survey responses
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pilot_survey_responses (
+            response_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            pair_number INTEGER,
+            session_1_query TEXT,
+            session_1_assistant TEXT,
+            session_2_query TEXT,
+            session_2_assistant TEXT,
+            q1_preference TEXT,
+            q1_explanation TEXT,
+            q2_reasons TEXT,
+            q3_useful TEXT,
+            q4_actionable TEXT,
+            q5_improvements_a TEXT,
+            q5_improvements_b TEXT,
+            session_1_messages TEXT,
+            session_1_notes TEXT,
+            session_2_messages TEXT,
+            session_2_notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -570,3 +596,128 @@ def get_user_query_level_stats(user_id: str) -> Dict:
         'total_queries': total_queries,
         'query_details': query_details
     }
+
+# ============= Pilot Study Survey Functions =============
+
+def save_pilot_survey(
+    user_id: str,
+    pair_number: int,
+    session_1_data: Dict,
+    session_2_data: Dict,
+    survey_data: Dict
+) -> int:
+    """Save pilot study survey response to database."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """INSERT INTO pilot_survey_responses 
+           (user_id, pair_number, session_1_query, session_1_assistant, 
+            session_2_query, session_2_assistant, q1_preference, q1_explanation,
+            q2_reasons, q3_useful, q4_actionable, q5_improvements_a, q5_improvements_b,
+            session_1_messages, session_1_notes, session_2_messages, session_2_notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            user_id,
+            pair_number,
+            session_1_data.get('query', ''),
+            session_1_data.get('assistant', ''),
+            session_2_data.get('query', ''),
+            session_2_data.get('assistant', ''),
+            survey_data.get('q1_preference', ''),
+            survey_data.get('q1_explanation', ''),
+            json.dumps(survey_data.get('q2_reasons', [])),
+            survey_data.get('q3_useful', ''),
+            survey_data.get('q4_actionable', ''),
+            survey_data.get('q5_improvements_A', ''),
+            survey_data.get('q5_improvements_B', ''),
+            json.dumps(session_1_data.get('messages', [])),
+            session_1_data.get('notes', ''),
+            json.dumps(session_2_data.get('messages', [])),
+            session_2_data.get('notes', '')
+        )
+    )
+    
+    response_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return response_id
+
+def get_all_pilot_surveys() -> Dict:
+    """Get all pilot survey responses grouped by user."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT user_id, pair_number, session_1_query, session_1_assistant,
+               session_2_query, session_2_assistant, q1_preference, q1_explanation,
+               q2_reasons, q3_useful, q4_actionable, q5_improvements_a, q5_improvements_b,
+               session_1_messages, session_1_notes, session_2_messages, session_2_notes
+        FROM pilot_survey_responses
+        ORDER BY user_id, pair_number
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    results = {}
+    for row in rows:
+        user_id = row[0]
+        pair_number = row[1]
+        
+        if user_id not in results:
+            results[user_id] = {}
+        
+        pair_key = f'pair_{pair_number}'
+        results[user_id][pair_key] = {
+            'session_1': {
+                'query': row[2],
+                'assistant': row[3],
+                'messages': json.loads(row[13]) if row[13] else [],
+                'notes': row[14] or ''
+            },
+            'session_2': {
+                'query': row[4],
+                'assistant': row[5],
+                'messages': json.loads(row[15]) if row[15] else [],
+                'notes': row[16] or ''
+            },
+            'survey': {
+                'q1_preference': row[6],
+                'q1_explanation': row[7],
+                'q2_reasons': json.loads(row[8]) if row[8] else [],
+                'q3_useful': row[9],
+                'q4_actionable': row[10],
+                'q5_improvements_A': row[11],
+                'q5_improvements_B': row[12],
+                'assistant_1_actual': row[3],
+                'assistant_2_actual': row[5]
+            }
+        }
+    
+    return results
+
+def export_pilot_data_json() -> str:
+    """Export all pilot survey data as JSON string."""
+    data = get_all_pilot_surveys()
+    return json.dumps(data, indent=2)
+
+def import_pilot_data_json(json_str: str) -> int:
+    """Import pilot survey data from JSON string. Returns count of imported records."""
+    data = json.loads(json_str)
+    count = 0
+    
+    for user_id, pairs in data.items():
+        for pair_key, pair_data in pairs.items():
+            pair_number = int(pair_key.replace('pair_', ''))
+            
+            save_pilot_survey(
+                user_id=user_id,
+                pair_number=pair_number,
+                session_1_data=pair_data.get('session_1', {}),
+                session_2_data=pair_data.get('session_2', {}),
+                survey_data=pair_data.get('survey', {})
+            )
+            count += 1
+    
+    return count

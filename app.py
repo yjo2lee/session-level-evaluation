@@ -8,7 +8,8 @@ from database import (
     complete_session_level_conversation, save_session_level_preference,
     get_all_users, get_all_queries_for_summary,
     get_turn_level_summary, get_session_level_summary, get_user_aggregate_stats,
-    get_user_query_level_stats
+    get_user_query_level_stats,
+    save_pilot_survey, get_all_pilot_surveys, export_pilot_data_json, import_pilot_data_json
 )
 from ai_service import get_assistant_response
 from pilot_config import PILOT_QUERIES, PILOT_ASSIGNMENTS
@@ -1293,6 +1294,15 @@ def show_pilot_pair_preference():
                 # Save overall preference for backward compatibility
                 st.session_state[f'pilot_pair_{pair_num}_preference'] = map_to_actual_assistant(q1_preference)
                 
+                # Save to database for persistence
+                save_pilot_survey(
+                    user_id=st.session_state.user_id,
+                    pair_number=pair_num,
+                    session_1_data=session_1_data,
+                    session_2_data=session_2_data,
+                    survey_data=survey_data
+                )
+                
                 # Move to continue prompt or completion
                 if current_session == 2:
                     st.session_state.pilot_phase = 'continue_prompt'
@@ -1437,12 +1447,52 @@ def show_pilot_analysis_page():
     """Show the analysis page for pilot study results."""
     st.title("📊 Pilot Study Analysis")
     
-    if st.button("← Back to Home"):
-        st.session_state.page = 'guide'
-        st.rerun()
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("← Back to Home"):
+            st.session_state.page = 'guide'
+            st.rerun()
     
-    # Get all pilot results
-    all_results = st.session_state.get('pilot_all_results', {})
+    # Load data from database (persistent) and merge with session state
+    db_results = get_all_pilot_surveys()
+    session_results = st.session_state.get('pilot_all_results', {})
+    
+    # Merge: database takes priority, then session state
+    all_results = {**session_results, **db_results}
+    
+    # Data management section
+    st.markdown("---")
+    st.markdown("### 📁 Data Management")
+    
+    mgmt_col1, mgmt_col2, mgmt_col3 = st.columns(3)
+    
+    with mgmt_col1:
+        st.markdown(f"**Records in database:** {len(db_results)} participants")
+    
+    with mgmt_col2:
+        # Export button
+        if all_results:
+            json_data = export_pilot_data_json()
+            st.download_button(
+                label="📥 Export Data (JSON)",
+                data=json_data,
+                file_name="pilot_study_data.json",
+                mime="application/json"
+            )
+        else:
+            st.button("📥 Export Data (JSON)", disabled=True)
+    
+    with mgmt_col3:
+        # Import section
+        uploaded_file = st.file_uploader("📤 Import JSON", type=['json'], key="pilot_import")
+        if uploaded_file is not None:
+            try:
+                json_str = uploaded_file.read().decode('utf-8')
+                count = import_pilot_data_json(json_str)
+                st.success(f"Imported {count} pair records!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Import failed: {str(e)}")
     
     # Tab navigation
     tab1, tab2 = st.tabs(["📈 Summary View", "🔍 Detail View"])
@@ -1457,10 +1507,14 @@ def show_pilot_summary_view(all_results):
     """Show the summary/aggregate view of pilot results."""
     
     if not all_results:
-        st.info("No pilot study results available yet. Complete some pilot sessions first.")
+        st.info("No pilot study results available yet.")
+        st.write("**Options:**")
+        st.write("1. Complete some pilot sessions to collect data")
+        st.write("2. Import previously exported JSON data using the upload button above")
+        st.write("3. Load demo data for testing:")
         
         # Option to load demo data
-        if st.button("Load Demo Data for Testing"):
+        if st.button("🧪 Load Demo Data for Testing"):
             load_demo_pilot_data()
             st.rerun()
         return
@@ -1987,35 +2041,40 @@ def show_summary_page():
 
             with st.expander("View Turn Details"):
                 for turn in turn_summary['turns']:
-                    st.markdown(f"### Turn {turn['turn_number']}")
-                    st.markdown(f"**User:** {turn['user_message']}")
+                    # Turn header
+                    st.markdown(f"<div style='background-color:#f0f0f0; padding:4px 10px; border-radius:4px; margin-bottom:8px;'><b>Turn {turn['turn_number']}</b></div>", unsafe_allow_html=True)
+                    
+                    # User message in chat bubble style
+                    st.markdown(f"""
+                        <div style='background-color:#e3f2fd; padding:10px 14px; border-radius:12px; margin:4px 0 8px 0; border-left:4px solid #1976D2;'>
+                            <b style='color:#1976D2;'>👤 User</b><br/>
+                            {turn['user_message']}
+                        </div>
+                    """, unsafe_allow_html=True)
 
-                    # 두 답변을 나란히 배치
+                    # Two responses side by side
                     resp_col1, resp_col2 = st.columns(2)
 
                     def render_assistant(col, name, response, selected):
                         with col:
                             if selected:
-                                st.markdown(
-                                    f"""
-                                    <div style='background-color:#e6f4ea; border-radius:8px; padding:6px;'>
-                                    <b>{name} ✓ Selected</b>
+                                st.markdown(f"""
+                                    <div style='background-color:#e8f5e9; padding:10px 14px; border-radius:12px; border-left:4px solid #4CAF50;'>
+                                        <b style='color:#4CAF50;'>🤖 {name} ✓ Selected</b><br/>
+                                        {response}
                                     </div>
-                                    """,
-                                    unsafe_allow_html=True
-                                )
+                                """, unsafe_allow_html=True)
                             else:
-                                st.markdown(f"<b>{name}</b>", unsafe_allow_html=True)
-
-                            # 답변 본문
-                            st.markdown(
-                                f"<div style='min-height:120px;'>{response}</div>",
-                                unsafe_allow_html=True
-                            )
+                                st.markdown(f"""
+                                    <div style='background-color:#f5f5f5; padding:10px 14px; border-radius:12px; border-left:4px solid #9e9e9e;'>
+                                        <b style='color:#666;'>🤖 {name}</b><br/>
+                                        {response}
+                                    </div>
+                                """, unsafe_allow_html=True)
 
                     render_assistant(resp_col1, "Assistant A", turn["response_a"], turn["selected_assistant"] == "A")
                     render_assistant(resp_col2, "Assistant B", turn["response_b"], turn["selected_assistant"] == "B")
-                    st.markdown("---")
+                    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
         else:
             st.info("No turn-level annotations found.")
@@ -2032,13 +2091,29 @@ def show_summary_page():
             for conv in session_summary['conversations']:
                 with st.expander(f"Conversation with {conv['assistant_name']}"):
                     for turn in conv['turns']:
-                        st.write(f"**Turn {turn['turn_number']}**")
-                        st.write(f"User: {turn['user_message']}")
-                        st.write(f"Assistant: {turn['assistant_response']}")
-                        st.write("---")
+                        # User message
+                        st.markdown(f"""
+                            <div style='background-color:#e3f2fd; padding:10px 14px; border-radius:12px; margin:4px 0; border-left:4px solid #1976D2;'>
+                                <b style='color:#1976D2;'>👤 You</b><br/>
+                                {turn['user_message']}
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Assistant response
+                        st.markdown(f"""
+                            <div style='background-color:#f5f5f5; padding:10px 14px; border-radius:12px; margin:4px 0 12px 0; border-left:4px solid #666;'>
+                                <b style='color:#666;'>🤖 Assistant</b><br/>
+                                {turn['assistant_response']}
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
                     if conv['notes']:
-                        st.write("**User Notes:**")
-                        st.write(conv['notes'])
+                        st.markdown(f"""
+                            <div style='background-color:#fff3e0; padding:10px 14px; border-radius:8px; border-left:4px solid #ff9800; margin-top:8px;'>
+                                <b style='color:#ff9800;'>📝 User Notes</b><br/>
+                                <i>{conv['notes']}</i>
+                            </div>
+                        """, unsafe_allow_html=True)
         else:
             st.info("No session-level annotations found.")
 
